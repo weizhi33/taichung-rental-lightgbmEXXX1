@@ -48,8 +48,8 @@ def load_map_gdf() -> gpd.GeoDataFrame:
 @lru_cache(maxsize=1)
 def map_geojson() -> tuple[dict, float, float]:
     gdf = load_map_gdf()
-    vmin = float(gdf["ln_rent"].quantile(0.02))
-    vmax = float(gdf["ln_rent"].quantile(0.98))
+    vmin = float(gdf["總價元"].quantile(0.02))
+    vmax = float(gdf["總價元"].quantile(0.98))
     gdf = gdf.copy()
     gdf["_color"] = gdf["ln_rent"].apply(lambda value: _red_color(float(value), vmin, vmax))
     return json.loads(gdf.to_json(drop_id=True)), vmin, vmax
