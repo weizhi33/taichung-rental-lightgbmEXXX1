@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = APP_ROOT / "Taichung_rental_houses_v4.gpkg"
+DATA_PATH = APP_ROOT / "20255.gpkg"
 POI_DIR = APP_ROOT / "POIs"
 ARTIFACT_DIR = APP_ROOT / "artifacts"
 MODEL_ARTIFACT_PATH = ARTIFACT_DIR / "lightgbm_rent_model.joblib"
