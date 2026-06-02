@@ -6,10 +6,12 @@ from functools import lru_cache
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd  # 新增 pandas 用來處理數值轉換
 
 from .config import DATA_PATH, EPSG_WEB
 
-MAP_CENTER = (24.1477, 120.6736)
+# 1. 將地圖預設中心點改為桃園
+MAP_CENTER = (24.9930, 121.3010)
 
 
 def _red_color(value: float, vmin: float, vmax: float) -> str:
@@ -27,14 +29,14 @@ def load_map_gdf() -> gpd.GeoDataFrame:
     if gdf.crs is None:
         gdf = gdf.set_crs(3826)
     gdf = gdf.to_crs(EPSG_WEB)
+    
+    # 2. 將保留欄位換成你桃園實價登錄的真實欄位
     cols = [
-        "rent_ping",
-        "ln_rent",
-        "area_pings",
-        "pet_friendly",
-        "apartment",
-        "elevator_building",
-        "core_zone",
+        "鄉鎮市",
+        "建物型",
+        "總樓層",
+        "總價元",
+        "單價元",
         "geometry",
     ]
     gdf = gdf[[col for col in cols if col in gdf.columns]].copy()
@@ -48,10 +50,16 @@ def load_map_gdf() -> gpd.GeoDataFrame:
 @lru_cache(maxsize=1)
 def map_geojson() -> tuple[dict, float, float]:
     gdf = load_map_gdf()
+    
+    # 3. 確保總價元是數字格式，避免字串報錯
+    gdf["總價元"] = pd.to_numeric(gdf["總價元"], errors='coerce').fillna(0)
+    
     vmin = float(gdf["總價元"].quantile(0.02))
     vmax = float(gdf["總價元"].quantile(0.98))
     gdf = gdf.copy()
-    gdf["_color"] = gdf["ln_rent"].apply(lambda value: _red_color(float(value), vmin, vmax))
+    
+    # 4. 把用來計算顏色的欄位換成總價元
+    gdf["_color"] = gdf["總價元"].apply(lambda value: _red_color(float(value), vmin, vmax))
     return json.loads(gdf.to_json(drop_id=True)), vmin, vmax
 
 
@@ -64,19 +72,18 @@ def _format_value(value) -> str:
     except TypeError:
         pass
     if isinstance(value, float):
-        return f"{value:,.3f}"
+        return f"{value:,.0f}" # 價格通常不用小數點，這裡改為0f
     return str(value)
 
 
 def _popup_html(properties: dict) -> str:
+    # 5. 修改點擊地圖點點時，彈出視窗要顯示的欄位
     labels = {
-        "rent_ping": "每坪租金",
-        "ln_rent": "ln_rent",
-        "area_pings": "坪數",
-        "pet_friendly": "可養寵物",
-        "apartment": "公寓",
-        "elevator_building": "電梯大樓",
-        "core_zone": "核心區",
+        "鄉鎮市": "鄉鎮市",
+        "建物型": "建物型態",
+        "總樓層": "總樓層",
+        "總價元": "總價 (元)",
+        "單價元": "單價 (元/平方公尺)",
     }
     rows = []
     for key, label in labels.items():
@@ -117,7 +124,7 @@ def create_leafmap_widget(lat_state, lon_state):
 
     houses_layer = GeoJSON(
         data=data,
-        name="Taichung rental houses: ln_rent",
+        name="Taoyuan Houses: 總價元",  # 順手改一下圖層名稱
         style_callback=style_callback,
         point_style={"radius": 4, "fillOpacity": 0.72, "weight": 0.5},
         hover_style={"fillOpacity": 1.0, "weight": 1.5},
