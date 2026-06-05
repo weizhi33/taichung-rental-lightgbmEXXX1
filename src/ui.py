@@ -7,6 +7,7 @@ import solara.lab
 
 from .map_view import MAP_CENTER, create_leafmap_widget
 from .scm_view import SCMPage  
+from .did_view import DIDPage  # 🌟 新增這一行：匯入 DID 頁面模組
 
 target_lat = solara.reactive(float(MAP_CENTER[0]))
 target_lon = solara.reactive(float(MAP_CENTER[1]))
@@ -88,7 +89,6 @@ def HomePage():
 @solara.component
 def MapPanel():
     with solara.Column(classes=["map-shell"], style={"width": "100%"}):
-        # 🌟 將所有篩選變數傳入 create_leafmap_widget，並設定依賴 (包含 building_age_val)
         map_widget = solara.use_memo(
             lambda: create_leafmap_widget(
                 target_lat, target_lon,
@@ -127,7 +127,6 @@ def ControlPanel():
 
         with solara.Column(classes=["control-section"]):
             solara.HTML(tag="div", unsafe_innerHTML="<div class='section-label'>數值條件</div>")
-            # 綁定屋齡變數，設定到 60 歲
             solara.SliderInt("屋齡上限 (年) - 設為60代表不限", value=building_age_val, min=0, max=60)
 
         with solara.Column(classes=["control-section"]):
@@ -190,14 +189,19 @@ def Page():
     solara.Title("桃園市房價展示 WebApp")
     solara.HTML(tag="style", unsafe_innerHTML=APP_CSS)
     
+    # 🌟 修改了 Tabs，加入了第四個「雙重差分法 (DID)」標籤
     with solara.lab.Tabs(value=selected_tab, grow=True, color="#0f766e", slider_color="#b91c1c"):
         solara.lab.Tab("首頁")
         solara.lab.Tab("地圖與分析")
         solara.lab.Tab("因果推論 (合成控制法)")
+        solara.lab.Tab("因果推論 (雙重差分法)")
         
+    # 🌟 設定切換邏輯，點擊第四個標籤時顯示 DIDPage()
     if selected_tab.value == 0:
         HomePage()
     elif selected_tab.value == 1:
         PredictionPage()
     elif selected_tab.value == 2:
         SCMPage()
+    elif selected_tab.value == 3:
+        DIDPage()
