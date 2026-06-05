@@ -12,9 +12,9 @@ target_lat = solara.reactive(float(MAP_CENTER[0]))
 target_lon = solara.reactive(float(MAP_CENTER[1]))
 selected_tab = solara.reactive(0)
 
-# 🌟【重要修改】將篩選變數移到最外層變成「全域變數」，方便與地圖連動
+# 🌟【全域篩選變數】
 district_val = solara.reactive("全部")  
-building_age_val = solara.reactive(5)
+building_age_val = solara.reactive(60) # 預設 60 代表不限屋齡
 parking_val = solara.reactive("不拘")
 elevator_val = solara.reactive("不拘")
 balcony_val = solara.reactive("不拘")
@@ -88,16 +88,17 @@ def HomePage():
 @solara.component
 def MapPanel():
     with solara.Column(classes=["map-shell"], style={"width": "100%"}):
-        # 🌟【重要修改】將外部的 Reactive 變數傳入，並設定依賴陣列
+        # 🌟 將所有篩選變數傳入 create_leafmap_widget，並設定依賴 (包含 building_age_val)
         map_widget = solara.use_memo(
             lambda: create_leafmap_widget(
                 target_lat, target_lon,
                 target_district=district_val,
+                target_building_age=building_age_val, 
                 target_parking=parking_val,
                 target_elevator=elevator_val,
                 target_management=management_val
             ), 
-            [district_val.value, parking_val.value, elevator_val.value, management_val.value] 
+            [district_val.value, building_age_val.value, parking_val.value, elevator_val.value, management_val.value] 
         )
         solara.display(map_widget)
         solara.HTML(
@@ -119,20 +120,19 @@ def ControlPanel():
             unsafe_innerHTML=(
                 "<div class='control-hero'><div class='panel-kicker'>HOUSE PRICE EXPLORER</div>"
                 "<h2 class='control-hero-title'>設定房屋屬性條件</h2>"
-                "<p class='panel-copy'>在左側地圖點選或拖曳目標位置，並在下方設定房屋屬性條件。未來將可直接預測該區段的房價。</p>"
+                "<p class='panel-copy'>在左側地圖點選或拖曳目標位置，並在下方設定房屋屬性條件。拉動選項可即時篩選地圖點位。</p>"
                 f"<span class='coordinate-pill' style='margin-top:10px'>目標座標：{target_lon.value:.6f}, {target_lat.value:.6f}</span></div>"
             ),
         )
 
         with solara.Column(classes=["control-section"]):
             solara.HTML(tag="div", unsafe_innerHTML="<div class='section-label'>數值條件</div>")
-            # 注意：這裡的屋齡目前只做展示，還沒寫進地圖篩選邏輯中
-            solara.SliderInt("屋齡 (年)", value=building_age_val, min=0, max=60)
+            # 綁定屋齡變數，設定到 60 歲
+            solara.SliderInt("屋齡上限 (年) - 設為60代表不限", value=building_age_val, min=0, max=60)
 
         with solara.Column(classes=["control-section"]):
             solara.HTML(tag="div", unsafe_innerHTML="<div class='section-label'>類別條件</div>")
             
-            # 🌟【重要修改】改用全域變數，並加入「全部」選項
             solara.Select("行政區", 
                 values=["全部", "桃園區", "中壢區", "八德區", "平鎮區", "龜山區", "蘆竹區", "大園區", "龍潭區", "楊梅區", "大溪區", "新屋區", "觀音區", "復興區"], 
                 value=district_val)
@@ -150,7 +150,7 @@ def ControlPanel():
                     solara.Select("管理組織", values=["不拘", "無", "有"], value=management_val)
 
         def dummy_prediction():
-            test_msg.value = "介面改裝成功！目前為純展示模式（機器學習模型尚未切換至桃園資料）。"
+            test_msg.value = "介面連動成功！地圖點位會根據上方選項自動篩選。"
 
         solara.Button("模擬預測", on_click=dummy_prediction, color="primary", outlined=False)
 

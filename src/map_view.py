@@ -27,19 +27,13 @@ def load_map_gdf() -> gpd.GeoDataFrame:
         gdf = gdf.set_crs(3826)
     gdf = gdf.to_crs(EPSG_WEB)
     
-    cols_needed = [
-        "鄉鎮市",
-        "鄉鎮市區",  
-        "建物型",
-        "總樓層",
-        "總價元",
-        "單價元",
-        "有無管理組織",
-        "電梯",
-        "車位類別", 
-        "geometry",
-    ]
-    gdf = gdf[[col for col in cols_needed if col in gdf.columns]].copy()
+    # 🌟【超級防呆】只要欄位名字裡面有這些關鍵字，通通保留，避免被 GPKG 截斷而找不到！
+    keep_cols = ["geometry"]
+    for col in gdf.columns:
+        if any(keyword in col for keyword in ["鄉鎮", "建物", "樓層", "價", "管", "電梯", "車位", "建築", "單價"]):
+            keep_cols.append(col)
+    
+    gdf = gdf[list(set(keep_cols))].copy()
 
     max_points = int(os.environ.get("APP_MAP_MAX_POINTS", "15000") or "0")
     if max_points > 0 and len(gdf) > max_points:
@@ -50,13 +44,18 @@ def load_map_gdf() -> gpd.GeoDataFrame:
 def map_geojson() -> tuple[dict, float, float]:
     gdf = load_map_gdf()
     
-    gdf["總價元"] = pd.to_numeric(gdf["總價元"], errors='coerce').fillna(0)
-    
-    vmin = float(gdf["總價元"].quantile(0.02))
-    vmax = float(gdf["總價元"].quantile(0.98))
+    # 抓出總價欄位（可能是總價元或總價）
+    price_col = "總價元" if "總價元" in gdf.columns else "總價"
+    if price_col not in gdf.columns:
+        # 如果真的找不到，就隨便抓個數字欄位墊檔避免當機
+        price_col = [c for c in gdf.columns if "價" in c][0] 
+
+    gdf[price_col] = pd.to_numeric(gdf[price_col], errors='coerce').fillna(0)
+    vmin = float(gdf[price_col].quantile(0.02))
+    vmax = float(gdf[price_col].quantile(0.98))
     gdf = gdf.copy()
     
-    gdf["_color"] = gdf["總價元"].apply(lambda value: _red_color(float(value), vmin, vmax))
+    gdf["_color"] = gdf[price_col].apply(lambda value: _red_color(float(value), vmin, vmax))
     return json.loads(gdf.to_json(drop_id=True)), vmin, vmax
 
 def _format_value(value) -> str:
@@ -72,29 +71,19 @@ def _format_value(value) -> str:
     return str(value)
 
 def _popup_html(properties: dict) -> str:
-    labels = {
-        "鄉鎮市": "鄉鎮市",
-        "鄉鎮市區": "鄉鎮市",
-        "建物型": "建物型態",
-        "總樓層": "總樓層",
-        "總價元": "總價 (元)",
-        "單價元": "單價 (元/平方公尺)",
-        "電梯": "電梯",
-        "有無管理組織": "管理組織"
-    }
-    rows = []
-    for key, label in labels.items():
-        if key in properties:
-            rows.append(
-                f"<tr><th style='text-align:left;padding:2px 8px 2px 0'>{label}</th>"
-                f"<td style='text-align:right;padding:2px 0'>{_format_value(properties[key])}</td></tr>"
-            )
-    return "<table style='font-size:12px'>" + "".join(rows) + "</table>"
+    # 簡化 Popup，只要有抓到相關名字就秀出來
+    html = "<table style='font-size:12px'>"
+    for k, v in properties.items():
+        if k not in ["geometry", "_color"] and v is not None and str(v).strip() not in ["nan", "None", ""]:
+            html += f"<tr><th style='text-align:left;padding:2px 8px 2px 0'>{k}</th><td style='text-align:right;padding:2px 0'>{_format_value(v)}</td></tr>"
+    html += "</table>"
+    return html
 
 def create_leafmap_widget(
     lat_state, 
     lon_state, 
     target_district=None, 
+    target_building_age=None, # 🌟 接收屋齡
     target_parking=None, 
     target_elevator=None,
     target_management=None
@@ -112,23 +101,47 @@ def create_leafmap_widget(
         props = f.get("properties", {})
         keep = True
         
-        # 🌟【修正點】加上 is not None，避免觸發 Solara 的防呆機制
+        # 1. 判斷行政區
         town_name = props.get("鄉鎮市") or props.get("鄉鎮市區")
         if target_district is not None and target_district.value != "全部" and town_name != target_district.value:
             keep = False
             
+        # 2. 判斷管理組織
         if target_management is not None and target_management.value != "不拘":
-            if str(props.get("有無管理組織")) != target_management.value:
+            mgmt_str = str(props.get("有無管理組織") or props.get("有無管")).strip()
+            actual_mgmt = "無" if mgmt_str in ["無", "None", "nan", "NaN", ""] else "有"
+            if actual_mgmt != target_management.value:
                 keep = False
                 
+        # 3. 判斷電梯
         if target_elevator is not None and target_elevator.value != "不拘":
-            if str(props.get("電梯")) != target_elevator.value:
+            elev_str = str(props.get("電梯")).strip()
+            actual_elev = "無" if elev_str in ["無", "None", "nan", "NaN", ""] else "有"
+            if actual_elev != target_elevator.value:
                 keep = False
         
+        # 4. 判斷車位 (有字串代表有車位，空值代表無)
         if target_parking is not None and target_parking.value != "不拘":
-            has_park = "有" if pd.notna(props.get("車位類別")) and str(props.get("車位類別")).strip() != "" else "無"
-            if has_park != target_parking.value:
+            park_str = str(props.get("車位類別") or props.get("車位類")).strip()
+            actual_park = "無" if park_str in ["無", "None", "nan", "NaN", ""] else "有"
+            if actual_park != target_parking.value:
                 keep = False
+
+        # 5. 判斷屋齡 (假設今年是民國 114 年 / 2025)
+        # 如果滑桿拉到 60 (最大值)，代表「不限屋齡」，就不作過濾
+        if target_building_age is not None and target_building_age.value < 60:
+            built_date = props.get("建築完成年月") or props.get("建築完")
+            if built_date is not None and str(built_date).strip() not in ["None", "nan", "", "NaN"]:
+                try:
+                    built_num = float(built_date)
+                    built_year = int(built_num // 10000) # 從 890512 提取出 89
+                    age = 114 - built_year 
+                    if age > target_building_age.value:
+                        keep = False
+                except:
+                    keep = False # 資料怪怪的就濾掉
+            else:
+                keep = False # 沒有屋齡資料的也先隱藏
 
         if keep:
             filtered_features.append(f)
@@ -136,7 +149,6 @@ def create_leafmap_widget(
     filtered_data = {"type": "FeatureCollection", "features": filtered_features}
 
     map_height = os.environ.get("APP_MAP_HEIGHT", "calc(100vh - 96px)")
-
     m = leafmap.Map(center=MAP_CENTER, zoom=12, height=map_height)
     m.layout.width = "100%"
     m.layout.height = map_height
