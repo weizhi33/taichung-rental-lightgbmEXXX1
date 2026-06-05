@@ -10,7 +10,6 @@ import pandas as pd
 
 from .config import DATA_PATH, EPSG_WEB
 
-# 1. 這裡就是剛剛不見的 MAP_CENTER！
 MAP_CENTER = (24.9930, 121.3010)
 
 def _red_color(value: float, vmin: float, vmax: float) -> str:
@@ -28,10 +27,9 @@ def load_map_gdf() -> gpd.GeoDataFrame:
         gdf = gdf.set_crs(3826)
     gdf = gdf.to_crs(EPSG_WEB)
     
-    # 2. 為了讓地圖可以篩選，把會用到的條件欄位也抓進來
     cols_needed = [
         "鄉鎮市",
-        "鄉鎮市區",  # 為了相容不同的命名習慣
+        "鄉鎮市區",  
         "建物型",
         "總樓層",
         "總價元",
@@ -93,7 +91,6 @@ def _popup_html(properties: dict) -> str:
             )
     return "<table style='font-size:12px'>" + "".join(rows) + "</table>"
 
-# 3. 接收從 UI 傳過來的篩選變數
 def create_leafmap_widget(
     lat_state, 
     lon_state, 
@@ -108,7 +105,6 @@ def create_leafmap_widget(
 
     data, _vmin, _vmax = map_geojson()
     
-    # 4. 在這裡執行地圖點點的篩選邏輯
     features = data.get("features", [])
     filtered_features = []
     
@@ -116,23 +112,20 @@ def create_leafmap_widget(
         props = f.get("properties", {})
         keep = True
         
-        # 判斷行政區
+        # 🌟【修正點】加上 is not None，避免觸發 Solara 的防呆機制
         town_name = props.get("鄉鎮市") or props.get("鄉鎮市區")
-        if target_district and target_district.value != "全部" and town_name != target_district.value:
+        if target_district is not None and target_district.value != "全部" and town_name != target_district.value:
             keep = False
             
-        # 判斷管理組織
-        if target_management and target_management.value != "不拘":
+        if target_management is not None and target_management.value != "不拘":
             if str(props.get("有無管理組織")) != target_management.value:
                 keep = False
                 
-        # 判斷電梯
-        if target_elevator and target_elevator.value != "不拘":
+        if target_elevator is not None and target_elevator.value != "不拘":
             if str(props.get("電梯")) != target_elevator.value:
                 keep = False
         
-        # 判斷車位 (有字串代表有車位，NaN代表無)
-        if target_parking and target_parking.value != "不拘":
+        if target_parking is not None and target_parking.value != "不拘":
             has_park = "有" if pd.notna(props.get("車位類別")) and str(props.get("車位類別")).strip() != "" else "無"
             if has_park != target_parking.value:
                 keep = False
