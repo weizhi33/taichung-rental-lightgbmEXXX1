@@ -1,106 +1,46 @@
-from __future__ import annotations
-
-import json
-import os
-from functools import lru_cache
-
-import geopandas as gpd
-import numpy as np
-import pandas as pd  # 新增 pandas 用來處理數值轉換
-
-from .config import DATA_PATH, EPSG_WEB
-
-# 1. 將地圖預設中心點改為桃園
-MAP_CENTER = (24.9930, 121.3010)
-
-
-def _red_color(value: float, vmin: float, vmax: float) -> str:
-    palette = ["#fee5d9", "#fcbba1", "#fc9272", "#fb6a4a", "#de2d26", "#a50f15"]
-    if not np.isfinite(value) or vmax <= vmin:
-        return palette[2]
-    frac = min(max((value - vmin) / (vmax - vmin), 0.0), 1.0)
-    return palette[min(int(frac * len(palette)), len(palette) - 1)]
-
-
-@lru_cache(maxsize=1)
-def load_map_gdf() -> gpd.GeoDataFrame:
-    gdf = gpd.read_file(DATA_PATH)
-    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
-    if gdf.crs is None:
-        gdf = gdf.set_crs(3826)
-    gdf = gdf.to_crs(EPSG_WEB)
-    
-    # 2. 將保留欄位換成你桃園實價登錄的真實欄位
-    cols = [
-        "鄉鎮市",
-        "建物型",
-        "總樓層",
-        "總價元",
-        "單價元",
-        "geometry",
-    ]
-    gdf = gdf[[col for col in cols if col in gdf.columns]].copy()
-
-    max_points = int(os.environ.get("APP_MAP_MAX_POINTS", "15000") or "0")
-    if max_points > 0 and len(gdf) > max_points:
-        gdf = gdf.sample(max_points, random_state=42).copy()
-    return gdf
-
-
-@lru_cache(maxsize=1)
-def map_geojson() -> tuple[dict, float, float]:
-    gdf = load_map_gdf()
-    
-    # 3. 確保總價元是數字格式，避免字串報錯
-    gdf["總價元"] = pd.to_numeric(gdf["總價元"], errors='coerce').fillna(0)
-    
-    vmin = float(gdf["總價元"].quantile(0.02))
-    vmax = float(gdf["總價元"].quantile(0.98))
-    gdf = gdf.copy()
-    
-    # 4. 把用來計算顏色的欄位換成總價元
-    gdf["_color"] = gdf["總價元"].apply(lambda value: _red_color(float(value), vmin, vmax))
-    return json.loads(gdf.to_json(drop_id=True)), vmin, vmax
-
-
-def _format_value(value) -> str:
-    if value is None:
-        return ""
-    try:
-        if np.isnan(value):
-            return ""
-    except TypeError:
-        pass
-    if isinstance(value, float):
-        return f"{value:,.0f}" # 價格通常不用小數點，這裡改為0f
-    return str(value)
-
-
-def _popup_html(properties: dict) -> str:
-    # 5. 修改點擊地圖點點時，彈出視窗要顯示的欄位
-    labels = {
-        "鄉鎮市": "鄉鎮市",
-        "建物型": "建物型態",
-        "總樓層": "總樓層",
-        "總價元": "總價 (元)",
-        "單價元": "單價 (元/平方公尺)",
-    }
-    rows = []
-    for key, label in labels.items():
-        if key in properties:
-            rows.append(
-                f"<tr><th style='text-align:left;padding:2px 8px 2px 0'>{label}</th>"
-                f"<td style='text-align:right;padding:2px 0'>{_format_value(properties[key])}</td></tr>"
-            )
-    return "<table style='font-size:12px'>" + "".join(rows) + "</table>"
-
-
-def create_leafmap_widget(lat_state, lon_state):
+def create_leafmap_widget(
+    lat_state, 
+    lon_state, 
+    # 加入從 UI 傳過來的篩選條件
+    target_district=None, 
+    target_parking=None, 
+    target_elevator=None,
+    target_management=None
+):
     import leafmap
     from ipyleaflet import GeoJSON, Marker, Popup
     from ipywidgets import HTML
 
+    # 1. 取得所有資料
     data, _vmin, _vmax = map_geojson()
+    
+    # 2. 如果有篩選條件，就在這裡過濾 GeoJSON features
+    features = data.get("features", [])
+    filtered_features = []
+    
+    for f in features:
+        props = f.get("properties", {})
+        keep = True
+        
+        # 行政區篩選
+        if target_district and target_district.value != "全部" and props.get("鄉鎮市") != target_district.value:
+            keep = False
+            
+        # 由於你的 CSV 中可能沒有直接對應的欄位，這裡先示範邏輯
+        # 如果你的原始資料有對應欄位，例如 "有無管理組織"
+        if target_management and target_management.value != "不拘":
+            # 假設資料裡的值是 "有" 或 "無"
+            if props.get("有無管理組織") != target_management.value:
+                keep = False
+                
+        # (你可以依此類推，加入車位、電梯的篩選邏輯，前提是資料要先被 load_map_gdf 讀進來)
+        
+        if keep:
+            filtered_features.append(f)
+            
+    # 將過濾後的特徵重新包裝回 GeoJSON 格式
+    filtered_data = {"type": "FeatureCollection", "features": filtered_features}
+
     map_height = os.environ.get("APP_MAP_HEIGHT", "calc(100vh - 96px)")
 
     m = leafmap.Map(center=MAP_CENTER, zoom=12, height=map_height)
@@ -122,9 +62,10 @@ def create_leafmap_widget(lat_state, lon_state):
             "fillOpacity": 0.72,
         }
 
+    # 3. 使用過濾後的 filtered_data 畫圖
     houses_layer = GeoJSON(
-        data=data,
-        name="Taoyuan Houses: 總價元",  # 順手改一下圖層名稱
+        data=filtered_data,
+        name="Taoyuan Houses",
         style_callback=style_callback,
         point_style={"radius": 4, "fillOpacity": 0.72, "weight": 0.5},
         hover_style={"fillOpacity": 1.0, "weight": 1.5},

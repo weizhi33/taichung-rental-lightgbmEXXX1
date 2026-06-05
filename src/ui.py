@@ -6,11 +6,19 @@ import solara
 import solara.lab
 
 from .map_view import MAP_CENTER, create_leafmap_widget
-from .scm_view import SCMPage  # 🌟 新增這一行：匯入 SCM 頁面模組
+from .scm_view import SCMPage  
 
 target_lat = solara.reactive(float(MAP_CENTER[0]))
 target_lon = solara.reactive(float(MAP_CENTER[1]))
 selected_tab = solara.reactive(0)
+
+# 🌟【重要修改】將篩選變數移到最外層變成「全域變數」，方便與地圖連動
+district_val = solara.reactive("全部")  
+building_age_val = solara.reactive(5)
+parking_val = solara.reactive("不拘")
+elevator_val = solara.reactive("不拘")
+balcony_val = solara.reactive("不拘")
+management_val = solara.reactive("不拘")
 
 APP_CSS = """
 /* 這裡保留老師原本的 CSS 樣式，只修改部分顏色或文字樣式，不影響排版 */
@@ -80,7 +88,17 @@ def HomePage():
 @solara.component
 def MapPanel():
     with solara.Column(classes=["map-shell"], style={"width": "100%"}):
-        map_widget = solara.use_memo(lambda: create_leafmap_widget(target_lat, target_lon), [])
+        # 🌟【重要修改】將外部的 Reactive 變數傳入，並設定依賴陣列
+        map_widget = solara.use_memo(
+            lambda: create_leafmap_widget(
+                target_lat, target_lon,
+                target_district=district_val,
+                target_parking=parking_val,
+                target_elevator=elevator_val,
+                target_management=management_val
+            ), 
+            [district_val.value, parking_val.value, elevator_val.value, management_val.value] 
+        )
         solara.display(map_widget)
         solara.HTML(
             tag="div",
@@ -93,14 +111,6 @@ def MapPanel():
 
 @solara.component
 def ControlPanel():
-    # 這裡就是你專屬的桃園房價控制變數
-    district = solara.use_reactive("桃園區")
-    building_age = solara.use_reactive(5)
-    has_parking = solara.use_reactive("有")
-    has_elevator = solara.use_reactive("有")
-    has_balcony = solara.use_reactive("有")
-    has_management = solara.use_reactive("有")
-    
     test_msg = solara.use_reactive("")
 
     with solara.Column(classes=["control-shell"], style={"width": "100%"}):
@@ -116,26 +126,28 @@ def ControlPanel():
 
         with solara.Column(classes=["control-section"]):
             solara.HTML(tag="div", unsafe_innerHTML="<div class='section-label'>數值條件</div>")
-            solara.SliderInt("屋齡 (年)", value=building_age, min=0, max=60)
+            # 注意：這裡的屋齡目前只做展示，還沒寫進地圖篩選邏輯中
+            solara.SliderInt("屋齡 (年)", value=building_age_val, min=0, max=60)
 
         with solara.Column(classes=["control-section"]):
             solara.HTML(tag="div", unsafe_innerHTML="<div class='section-label'>類別條件</div>")
             
+            # 🌟【重要修改】改用全域變數，並加入「全部」選項
             solara.Select("行政區", 
-                values=["桃園區", "中壢區", "八德區", "平鎮區", "龜山區", "蘆竹區", "大園區", "龍潭區", "楊梅區", "大溪區", "新屋區", "觀音區", "復興區"], 
-                value=district)
+                values=["全部", "桃園區", "中壢區", "八德區", "平鎮區", "龜山區", "蘆竹區", "大園區", "龍潭區", "楊梅區", "大溪區", "新屋區", "觀音區", "復興區"], 
+                value=district_val)
             
             with solara.Row(gap="12px", style={"width": "100%"}):
                 with solara.Column(style={"flex": "1 1 0"}):
-                    solara.Select("車位", values=["無", "有"], value=has_parking)
+                    solara.Select("車位", values=["不拘", "無", "有"], value=parking_val)
                 with solara.Column(style={"flex": "1 1 0"}):
-                    solara.Select("電梯", values=["無", "有"], value=has_elevator)
+                    solara.Select("電梯", values=["不拘", "無", "有"], value=elevator_val)
                     
             with solara.Row(gap="12px", style={"width": "100%"}):
                 with solara.Column(style={"flex": "1 1 0"}):
-                    solara.Select("陽台", values=["無", "有"], value=has_balcony)
+                    solara.Select("陽台", values=["不拘", "無", "有"], value=balcony_val)
                 with solara.Column(style={"flex": "1 1 0"}):
-                    solara.Select("管理組織", values=["無", "有"], value=has_management)
+                    solara.Select("管理組織", values=["不拘", "無", "有"], value=management_val)
 
         def dummy_prediction():
             test_msg.value = "介面改裝成功！目前為純展示模式（機器學習模型尚未切換至桃園資料）。"
@@ -170,7 +182,6 @@ def PredictionPage():
                 "overflow-y": "auto",
             },
         ):
-            # 移除了 bundle 和 cache 的傳遞，純粹展示 UI
             ControlPanel()
 
 
@@ -182,9 +193,8 @@ def Page():
     with solara.lab.Tabs(value=selected_tab, grow=True, color="#0f766e", slider_color="#b91c1c"):
         solara.lab.Tab("首頁")
         solara.lab.Tab("地圖與分析")
-        solara.lab.Tab("因果推論 (合成控制法)")  # 🌟 新增這一行：第三個標籤頁
+        solara.lab.Tab("因果推論 (合成控制法)")
         
-    # 🌟 修改這裡的判斷邏輯，加入 selected_tab.value == 2 的情況
     if selected_tab.value == 0:
         HomePage()
     elif selected_tab.value == 1:
