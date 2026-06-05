@@ -6,6 +6,7 @@ import solara
 import solara.lab
 
 from .map_view import MAP_CENTER, create_leafmap_widget
+from .scm_view import SCMPage  # 🌟 新增這一行：匯入 SCM 頁面模組
 
 target_lat = solara.reactive(float(MAP_CENTER[0]))
 target_lon = solara.reactive(float(MAP_CENTER[1]))
@@ -181,8 +182,12 @@ def Page():
     with solara.lab.Tabs(value=selected_tab, grow=True, color="#0f766e", slider_color="#b91c1c"):
         solara.lab.Tab("首頁")
         solara.lab.Tab("地圖與分析")
+        solara.lab.Tab("因果推論 (合成控制法)")  # 🌟 新增這一行：第三個標籤頁
         
+    # 🌟 修改這裡的判斷邏輯，加入 selected_tab.value == 2 的情況
     if selected_tab.value == 0:
         HomePage()
-    else:
+    elif selected_tab.value == 1:
         PredictionPage()
+    elif selected_tab.value == 2:
+        SCMPage()
