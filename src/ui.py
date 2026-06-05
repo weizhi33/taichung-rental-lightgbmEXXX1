@@ -7,13 +7,13 @@ import solara.lab
 
 from .map_view import MAP_CENTER, create_leafmap_widget
 from .scm_view import SCMPage  
-from .did_view import DIDPage  # 🌟 新增這一行：匯入 DID 頁面模組
+from .did_view import DIDPage  
 
+# ─── 全域響應式變數 (Reactive Variables) ───
 target_lat = solara.reactive(float(MAP_CENTER[0]))
 target_lon = solara.reactive(float(MAP_CENTER[1]))
 selected_tab = solara.reactive(0)
 
-# 🌟【全域篩選變數】
 district_val = solara.reactive("全部")  
 building_age_val = solara.reactive(60) # 預設 60 代表不限屋齡
 parking_val = solara.reactive("不拘")
@@ -21,8 +21,8 @@ elevator_val = solara.reactive("不拘")
 balcony_val = solara.reactive("不拘")
 management_val = solara.reactive("不拘")
 
+# ─── CSS 樣式設定 ───
 APP_CSS = """
-/* 這裡保留老師原本的 CSS 樣式，只修改部分顏色或文字樣式，不影響排版 */
 :root {
   --ds-ink: #16324f;
   --ds-ink-soft: #385169;
@@ -71,21 +71,63 @@ APP_CSS = """
 @media (max-width: 1180px) { .map-page { flex-direction: column !important; overflow: visible !important; } .map-column, .control-column { flex: 1 1 auto !important; min-width: 0 !important; max-width: none !important; width: 100% !important; } .control-column { max-height: none !important; overflow-y: visible !important; } }
 """
 
+# ─── 首頁 (Home Page) ───
 def _home_html() -> str:
-    intro = (
-        "<section class='app-panel'><div class='panel-body'>"
-        "<div class='panel-kicker'>TAOYUAN HOUSE PRICE EXPLORER</div>"
-        "<h1 class='panel-title'>桃園市 2025 房屋買賣現況 WebApp</h1>"
-        "<p class='panel-copy'>本系統展示桃園市房屋買賣實價登錄資料，"
-        "目前提供地圖點位探索，未來將串接機器學習模型進行總價預測。</p>"
+    hero = (
+        "<section class='app-panel' style='margin-bottom: 24px;'><div class='panel-body' style='padding: 32px;'>"
+        "<div class='panel-kicker' style='color: var(--ds-rent); font-size: 14px; letter-spacing: 1px;'>GEOSPATIAL & CAUSAL INFERENCE DASHBOARD</div>"
+        "<h1 class='panel-title' style='font-size: 28px; margin-bottom: 16px;'>軌道經濟學：桃園捷運路網對房價之時空效應評估</h1>"
+        "<p class='panel-copy' style='font-size: 16px; line-height: 1.8; max-width: 950px;'>"
+        "本系統結合<b>地理資訊系統 (GIS)</b>與<b>計量經濟學</b>，深入探討桃園捷運路網擴建對周邊房地產市場的真實影響。"
+        "我們透過空間圖資套疊實價登錄數據，並引入「合成控制法 (SCM)」與「雙重差分法 (DID)」等因果推論模型，"
+        "試圖剝離總體經濟趨勢，精準量化交通建設帶來的「淨溢價效應」。"
+        "</p>"
+        "<div class='metric-grid' style='margin-top: 32px;'>"
+        "<div class='metric-tile'><div class='metric-label'>資料涵蓋範圍</div><div class='metric-value'>桃園 13 區</div></div>"
+        "<div class='metric-tile'><div class='metric-label'>核心空間圖資</div><div class='metric-value' style='color: var(--ds-ink);'>實價登錄 / 捷運路網</div></div>"
+        "<div class='metric-tile'><div class='metric-label'>計量推論模型</div><div class='metric-value' style='color: var(--ds-ink);'>TWFE-DID / SCM</div></div>"
+        "<div class='metric-tile'><div class='metric-label'>系統開發架構</div><div class='metric-value' style='color: var(--ds-green);'>Python / Solara</div></div>"
+        "</div>"
         "</div></section>"
     )
-    return f"<div class='codex-app-page'><div class='home-grid'>{intro}</div></div>"
+
+    features = (
+        "<div class='home-grid'>"
+        
+        "<section class='app-panel'><div class='panel-body'>"
+        "<div class='panel-kicker'>MODULE 01</div>"
+        "<h2 class='panel-title small'>🗺️ 空間資料探索與分析</h2>"
+        "<p class='panel-copy'>互動式網格地圖，支援多條件即時篩選。直觀展示各行政區、不同屋齡與建築型態的房價空間分布狀態，尋找地理空間上的熱區與冷區。</p>"
+        "</div></section>"
+        
+        "<section class='app-panel'><div class='panel-body'>"
+        "<div class='panel-kicker'>MODULE 02</div>"
+        "<h2 class='panel-title small'>⚖️ 合成控制法 (SCM)</h2>"
+        "<p class='panel-copy'>為受捷運影響的行政區尋找「完美替身」。從未受影響的區域池中分配權重，合成出虛擬的對照組，藉此觀察政策介入前後的趨勢分歧。</p>"
+        "</div></section>"
+        
+        "<section class='app-panel'><div class='panel-body'>"
+        "<div class='panel-kicker'>MODULE 03</div>"
+        "<h2 class='panel-title small'>📈 雙重差分法 (DID)</h2>"
+        "<p class='panel-copy'>黃金標準的因果推論。利用雙向固定效應模型 (TWFE)，嚴格控制空間異質性與時間共同趨勢，檢驗平行趨勢並精算捷運通車的 ATT 淨效應。</p>"
+        "</div></section>"
+        
+        "<section class='app-panel'><div class='panel-body'>"
+        "<div class='panel-kicker'>PROJECT INFO</div>"
+        "<h2 class='panel-title small'>🎓 關於本專題</h2>"
+        "<p class='panel-copy'>這是一場從地理空間出發的資料科學旅程。將複雜的空間運算與嚴謹的計量模型，轉化為直觀的 Web 互動儀表板，探索城市發展的真實脈絡。</p>"
+        "</div></section>"
+        
+        "</div>"
+    )
+
+    return f"<div class='codex-app-page'>{hero}{features}</div>"
 
 @solara.component
 def HomePage():
     solara.HTML(tag="div", unsafe_innerHTML=_home_html())
 
+# ─── 地圖與分析頁面組件 ───
 @solara.component
 def MapPanel():
     with solara.Column(classes=["map-shell"], style={"width": "100%"}):
@@ -156,7 +198,6 @@ def ControlPanel():
         if test_msg.value:
             solara.Success(test_msg.value)
 
-
 @solara.component
 def PredictionPage():
     with solara.Row(
@@ -183,20 +224,18 @@ def PredictionPage():
         ):
             ControlPanel()
 
-
+# ─── 主應用程式入口 (Main Page) ───
 @solara.component
 def Page():
     solara.Title("桃園市房價展示 WebApp")
     solara.HTML(tag="style", unsafe_innerHTML=APP_CSS)
     
-    # 🌟 修改了 Tabs，加入了第四個「雙重差分法 (DID)」標籤
     with solara.lab.Tabs(value=selected_tab, grow=True, color="#0f766e", slider_color="#b91c1c"):
         solara.lab.Tab("首頁")
         solara.lab.Tab("地圖與分析")
         solara.lab.Tab("因果推論 (合成控制法)")
         solara.lab.Tab("因果推論 (雙重差分法)")
         
-    # 🌟 設定切換邏輯，點擊第四個標籤時顯示 DIDPage()
     if selected_tab.value == 0:
         HomePage()
     elif selected_tab.value == 1:
