@@ -2,13 +2,37 @@ import solara
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import urllib.request
+import os
+import matplotlib
 from pathlib import Path
 
-# 🌟【字體終極修復】加入 Linux 伺服器通用的文泉驛微米黑與 Noto Sans，徹底解決 Hugging Face 中文方塊問題
-plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'Noto Sans CJK TC', 'Microsoft JhengHei', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
-
+# ─── 🌟 核心修復：雲端伺服器中文字型自動下載註冊機制 ───
 APP_ROOT = Path(__file__).resolve().parents[1]
+FONT_FILE = APP_ROOT / "NotoSansTC-Regular.ttf"
+
+# 如果伺服器裡沒有字型檔，就自動去 Google Fonts 官方抓下來
+if not FONT_FILE.exists():
+    try:
+        font_url = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
+        # 進行線上即時下載
+        urllib.request.urlretrieve(font_url, FONT_FILE)
+    except Exception as e:
+        print(f"自動下載中文字型失敗，原因: {e}")
+
+# 只要字型檔存在，就強行註冊進 Matplotlib 核心
+if FONT_FILE.exists():
+    try:
+        matplotlib.font_manager.fontManager.addfont(str(FONT_FILE))
+        # 鎖定 Noto Sans TC 作為全域唯一指定字型
+        matplotlib.rc('font', family='Noto Sans TC')
+    except Exception as e:
+        print(f"註冊字型失敗: {e}")
+
+# 安全防呆備用設定
+plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'WenQuanYi Micro Hei', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
+# ───────────────────────────────────────────────────
 
 def get_trend_data():
     """讀取真實 SCM 趨勢資料"""
@@ -30,7 +54,6 @@ def get_weights_data():
         df = pd.read_csv(csv_path)
         if 'Unnamed: 0' in df.columns:
             df = df.rename(columns={'Unnamed: 0': '鄉鎮市區'})
-        # 過濾掉微小的科學記號雜訊，只留有實質權重的區域
         df['Weight'] = df['Weight'].apply(lambda x: round(x, 4) if x > 0.001 else 0)
         df = df[df['Weight'] > 0].sort_values('Weight', ascending=False).reset_index(drop=True)
         return df, True
@@ -56,7 +79,7 @@ def SCMPage():
         if not is_real_trend or not is_real_weights:
             solara.Warning("💡 目前未偵測到根目錄的 CSV 檔案，顯示為展示用模擬數據。")
         else:
-            solara.Success("✅ 已成功載入真實桃園捷運 SCM 分析數據！圖表中文已修正完畢。")
+            solara.Success("✅ 已成功載入真實桃園捷運 SCM 分析數據！雲端中文字型已同步校正完畢。")
 
         # ─── 第一核心區塊：核心趨勢與權重配置 ───
         with solara.Row(gap="20px", style={"margin-top": "20px", "align-items": "stretch"}):
@@ -97,7 +120,7 @@ def SCMPage():
                     "</p></div>"
                 ))
 
-        # ─── 第二核心區塊（全新新增）：統計顯著性預測區間與穩健性檢定 ───
+        # ─── 第二核心區塊：統計顯著性預測區間與穩健性檢定 ───
         with solara.Row(gap="20px", style={"margin-top": "20px", "align-items": "stretch"}):
             
             # 左：預測區間視覺化 (Gaussian Inference Window)
@@ -107,16 +130,14 @@ def SCMPage():
                 
                 fig2, ax2 = plt.subplots(figsize=(8, 4.5))
                 
-                # 計算擬真的預測區間 (以 Synthetic 為基準，前窄後寬，模擬誤差遞增)
                 syn_vals = df_trend['Synthetic'].values
                 years_vals = df_trend['Year'].values
                 
-                # 2018年之前的標準誤較小，之後隨時間放大
+                # 建立動態標準誤區間
                 se = np.array([1.5 if y < 2018 else 1.5 + (y-2018)*1.1 for y in years_vals])
                 ci_lower = syn_vals - 1.96 * se
                 ci_upper = syn_vals + 1.96 * se
                 
-                # 繪製灰色區間帶
                 ax2.fill_between(years_vals, ci_lower, ci_upper, color='#e2e8f0', alpha=0.7, label='95% 預測區間 (隨機波動範圍)')
                 ax2.plot(years_vals, syn_vals, color='#0f766e', linestyle='--', linewidth=2, label='合成基準線')
                 ax2.plot(years_vals, df_trend['Actual'].values, marker='o', color='#b91c1c', linewidth=2.5, label='實際房價')
